@@ -12,15 +12,13 @@ wss.on('connection', function connection(ws) {
   });
 });
 
-
-
-
+// AddPeer
+// RemovePeer
 
 /*
 class SignalingChannel {
     constructor(){}
 }
-
 
 // Set up an asynchronous communication channel that will be
 // used during the peer connection setup
