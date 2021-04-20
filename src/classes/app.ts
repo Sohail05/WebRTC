@@ -1,6 +1,10 @@
+import { WebRTC } from './webrtc';
 import { MediaStreamFactory } from "./media-stream-factory";
 
-//https://webrtc.org/getting-started/peer-connections
+function delay(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function getUrlVars() {
     var urlParams = new URLSearchParams(window.location.search);
 
@@ -10,96 +14,94 @@ function getUrlVars() {
     return urlParams;
 }
 
+
+const configuration = { 'iceServers': [{ 'urls': 'stun:stun2.l.google.com:19302' }] }
+const sdpConstraints: RTCOfferOptions = {
+    offerToReceiveAudio: true,
+    offerToReceiveVideo: true
+};
 export class App {
 
-    constructor() { }
+    peerOffer = new WebRTC(configuration)
+    peerAnswer = new WebRTC(configuration)
 
     async init() {
 
-        // -----------------------------------------------------
-        // Get Media Stream
-        const mediaStream = await new MediaStreamFactory().request();
+        const videoA = document.body.querySelector("video") as any;
+        const stream = await videoA.captureStream() as MediaStream;
 
-        // -----------------------------------------------------
-        // DOM Element
+        const videoB = document.createElement("video");
+        //videoB.srcObject = stream;
+        videoB.autoplay = true;
+        videoB.muted = true;
+        videoB.height = 200;
+        videoB.controls = true;
+        videoB.poster = "data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
+        document.body.appendChild(videoB);
 
-        // Create Video Element and append to DOM
-        const video = document.createElement("video");
+        //const mediaStream = await navigator.mediaDevices.getUserMedia({audio:true});
 
-        //Feed MediaStream and autoplay
-        video.srcObject = mediaStream;
-        video.autoplay = true;
-        video.muted = true;
+        this.peerAnswer.peerConnection.addEventListener("track", (event) => {
+            console.log(event);
 
-        document.body.appendChild(video);
+            //videoB.srcObject = event.streams[0].getTracks()[0].
+        })
 
-        // -----------------------------------------------------
-        // WebSocket
+        stream.addEventListener("addtrack", (event: MediaStreamTrackEvent) => {
+            this.peerOffer.peerConnection.addTrack(event.track, stream);
+        })
 
-        const ws = new WebSocket('ws://localhost:8080');
-        ws.onopen = (event) => {
+        this.peerAnswer.peerConnection.addEventListener("track", (event) => {
+            console.log(event);
+        })
 
-            console.log("WebSocket Connected");
-            ws.send(JSON.stringify({message: "AddPeer", user: getUrlVars().get("user")}))
+        this.peerOffer.peerConnection.addEventListener("icecandidate", (event) => {
+            this.peerAnswer.peerConnection.addIceCandidate(event.candidate as any)
+        })
 
-            ws.onmessage = (messageEvent) => {
+        this.peerAnswer.peerConnection.addEventListener("icecandidate", (event) => {
+            this.peerOffer.peerConnection.addIceCandidate(event.candidate as any)
+        })
 
-                switch (typeof messageEvent.data) {
-                    case "string":
-                        try {
-                            var json = JSON.parse(messageEvent.data);
-                            console.log(json);
-                            
-                        } catch (e) {
-                            console.error(messageEvent.data, e, "Something went wrong in the input format, expecting");
-                        }
-                        break;
-                }
 
-                //makeCall()
-            };
+        this.peerOffer.peerConnection.addEventListener("connectionstatechange", (event) => {
+            console.log(event);
+        })
 
-        }
 
-        // -----------------------------------------------------
+        // Create DataChannels
 
-        /*
-        console.log(this);
+        this.peerOffer.peerConnection.addEventListener("datachannel", (event) => {
+            const channel = event.channel;
+            channel.onclose = () => { console.log("close") };
+            channel.onmessage = (message) => { console.log("message", message) };
+            channel.onerror = (error) => { console.log("error", error) }
+            channel.onopen = () => {
+                console.log("open")
+                channel.send("hallow")
+            }
+        })
 
-        const constraints: MediaStreamConstraints = {
-            audio: { echoCancellation: true },
-            video: {},
-        }
 
-        //console.log('Got MediaStream:', stream);
-        //const canvas = document.createElement("canvas");
-        //canvas.
-        const video = document.createElement("video");
-        stream.then((mediaStream: MediaStream) => {
-            video.srcObject = mediaStream;
-            video.autoplay = true;
-            video.controls = true;
-            video.muted = true;
-        });
+        this.peerAnswer.peerConnection.addEventListener("datachannel", (event) => {
+            const channel = event.channel;
+            channel.onclose = () => { console.log("close") };
+            channel.onmessage = (message) => { console.log("message", message) };
+            channel.onerror = (error) => { console.log("error", error) }
+            channel.onopen = () => {
+                console.log("open")
+                channel.send("hallow")
+            }
+        })
 
-        document.body.appendChild(video);
 
-        async function makeCall() {
-            const configuration = { 'iceServers': [{ 'urls': 'stun:stun.l.google.com:19302' }] }
-            const peerConnection = new RTCPeerConnection(configuration);
-            ws.addEventListener('message', async message => {
-                //console.log(message);
+        const offerChannel = await this.peerOffer.createDataChannel("hello");
+        const answerChannel = await this.peerAnswer.createDataChannel("hello");
 
-                /*if (message.answer) {
-                    const remoteDesc = new RTCSessionDescription(message.answer);
-                    await peerConnection.setRemoteDescription(remoteDesc);
-                }
-            });
-            const offer = await peerConnection.createOffer();
-            await peerConnection.setLocalDescription(offer);
-            ws.send(JSON.stringify({ 'offer': offer }));
-        }
-        */
+        // Start WebRTC Connection
+        const offer = await this.peerOffer.createOffer(sdpConstraints);
+        const answer = await this.peerAnswer.setOffer(offer as any);
+        this.peerOffer.setAnswer(answer as any);
     }
 
 }

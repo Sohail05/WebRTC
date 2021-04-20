@@ -5,12 +5,13 @@
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "serve": "parcel src/index.html",
+    "start": "parcel src/index.html",
     "service": "ts-node src/server.ts"
   },
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@types/webrtc": "^0.0.27",
     "typescript": "^3.9.3",
     "ws": "^7.3.0"
   },
